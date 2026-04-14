@@ -2,20 +2,16 @@
 # ============================================================
 # Pull everything post-flight from RPi in one go.
 # Creates: flights/YYYY-MM-DD_flightNN/
-# Pulls:   raw_frames/, mission.jsonl, droneDB.db
-#
-# This extends pull_logs_rpi.sh (which skydock2 uses to pull
-# only mission.jsonl). ai_skydock owns the full post-flight
-# pipeline — use this instead.
+# Pulls:   raw_frames/, mission.jsonl, database_snapshot.json, droneDB.db
 #
 # Usage:
-#   ./pull_flight.sh MISSION_ID [RPI_HOST] [RPI_USER]
+#   ./pull_flight.sh                          # interactive mission picker
+#   ./pull_flight.sh 0240                     # specific mission
+#   ./pull_flight.sh 0240 rpi.local fred      # explicit host/user
+#   ./pull_flight.sh 0240 rpi.local fred 5    # pull every 5th frame
 #
-# MISSION_ID is the skydock2 missions/NNNN folder on the RPi.
-#
-# Examples:
-#   ./pull_flight.sh 0001
-#   ./pull_flight.sh 0001 rpi.local fred
+# --stride N (4th arg): pull every Nth frame. Default 1 (all frames).
+#   Stride 5 on a 16k-frame flight = ~3k frames, ~5x faster over WiFi.
 #
 # After pulling, auto-label with:
 #   python labeling/auto_label.py --flight FLIGHT_ID --stage
@@ -27,6 +23,7 @@ set -e
 MISSION_ID="${1}"
 RPI_HOST="${2:-rpi.local}"
 RPI_USER="${3:-fred}"
+STRIDE="${4:-1}"
 
 # If no MISSION_ID given, list missions from RPi and let user pick
 if [ -z "$MISSION_ID" ]; then
@@ -57,7 +54,7 @@ if [ -z "$MISSION_ID" ]; then
     TOTAL=$((i - 1))
     printf "Select mission [1-%d] (default %d): " "$TOTAL" "$TOTAL"
     read -r CHOICE < /dev/tty
-    CHOICE="${CHOICE:-$TOTAL}"   # default = latest
+    CHOICE="${CHOICE:-$TOTAL}"
 
     if ! [[ "$CHOICE" =~ ^[0-9]+$ ]] || [ "$CHOICE" -lt 1 ] || [ "$CHOICE" -gt "$TOTAL" ]; then
         echo "ERROR: Invalid selection."
@@ -66,6 +63,15 @@ if [ -z "$MISSION_ID" ]; then
 
     MISSION_ID=$(awk "NR==${CHOICE} {print \$1}" <<< "$MISSION_INFO")
     echo "  Selected: ${MISSION_ID}"
+
+    # Ask for stride
+    echo ""
+    printf "Pull every Nth frame? [default 1 = all, suggest 5 for WiFi]: "
+    read -r STRIDE_INPUT < /dev/tty
+    STRIDE="${STRIDE_INPUT:-1}"
+    if ! [[ "$STRIDE" =~ ^[0-9]+$ ]] || [ "$STRIDE" -lt 1 ]; then
+        STRIDE=1
+    fi
     echo ""
 fi
 
@@ -87,30 +93,43 @@ RPI_MISSION_DIR="/home/${RPI_USER}/skydock2/missions/${MISSION_ID}"
 echo "=== pull_flight.sh ==="
 echo "  Mission    : ${MISSION_ID} on ${RPI_USER}@${RPI_HOST}"
 echo "  Local path : ${LOCAL_DIR}"
+echo "  Stride     : ${STRIDE} (every ${STRIDE}th frame)"
 echo ""
 
 # Verify mission exists
 if ! ssh "${RPI_USER}@${RPI_HOST}" "test -d ${RPI_MISSION_DIR}" 2>/dev/null; then
     echo "ERROR: ${RPI_MISSION_DIR} not found on RPi."
-    echo "Available missions:"
-    ssh "${RPI_USER}@${RPI_HOST}" \
-        "ls /home/${RPI_USER}/skydock2/missions/ 2>/dev/null || echo '  (none)'"
     exit 1
 fi
 
 mkdir -p "${LOCAL_DIR}/raw_frames"
 mkdir -p "${LOCAL_DIR}/meta"
 
-# ---- Pull frames (tar over SSH — one connection, no per-file overhead) ----
+# ---- Pull frames ----
 echo "==> Pulling raw_frames/ ..."
 FRAME_COUNT_REMOTE=$(ssh "${RPI_USER}@${RPI_HOST}" \
     "ls ${RPI_MISSION_DIR}/frames/ 2>/dev/null | wc -l" 2>/dev/null || echo 0)
-echo "    ${FRAME_COUNT_REMOTE} frames on RPi"
 
-# JPEGs are already compressed — skip -z to avoid wasting CPU with no size benefit.
-# Single tar stream over one SSH connection is faster than rsync's per-file overhead on WiFi.
-ssh "${RPI_USER}@${RPI_HOST}" "tar -C ${RPI_MISSION_DIR}/frames -cf - ." \
-    | tar -xf - -C "${LOCAL_DIR}/raw_frames/"
+if [ "${STRIDE}" -gt 1 ]; then
+    FRAME_COUNT_EXPECTED=$(( (FRAME_COUNT_REMOTE + STRIDE - 1) / STRIDE ))
+    echo "    ${FRAME_COUNT_REMOTE} frames on RPi → pulling every ${STRIDE}th (~${FRAME_COUNT_EXPECTED} frames)"
+else
+    echo "    ${FRAME_COUNT_REMOTE} frames on RPi"
+fi
+
+# Build file list on RPi (every Nth), pipe through tar, extract locally.
+# JPEGs already compressed — no -z. pv shows progress if installed.
+if command -v pv &>/dev/null; then
+    PROGRESS="pv -pterb"
+else
+    PROGRESS="cat"
+fi
+
+ssh "${RPI_USER}@${RPI_HOST}" "
+    cd ${RPI_MISSION_DIR}/frames
+    ls | sort -V | awk 'NR % ${STRIDE} == 1 || ${STRIDE} == 1' | tar -cf - -T -
+" | ${PROGRESS} | tar -xf - -C "${LOCAL_DIR}/raw_frames/"
+
 echo "    OK"
 
 # ---- Pull mission log (try both names) ----
@@ -134,19 +153,19 @@ cat > "${LOCAL_DIR}/flight_meta.json" <<JSON
   "rpi_host": "${RPI_HOST}",
   "rpi_user": "${RPI_USER}",
   "pull_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "frame_count": ${FRAME_COUNT}
+  "frame_count": ${FRAME_COUNT},
+  "stride": ${STRIDE}
 }
 JSON
 
 echo ""
 echo "=== Done ==="
 echo "  Flight ID  : ${FLIGHT_ID}"
-echo "  Frames     : ${FRAME_COUNT}"
+echo "  Frames     : ${FRAME_COUNT} (stride ${STRIDE})"
 echo "  Local dir  : ${LOCAL_DIR}/"
 echo ""
 echo "Next:"
-echo "  1. Auto-label (set SKYDOCK_YOLO_MODEL or use --model):"
+echo "  1. Auto-label:"
 echo "       python labeling/auto_label.py --flight ${FLIGHT_ID} --stage"
-echo "  2. Human QA (edit meta/*.json if needed)"
-echo "  3. Ingest: python add_data.py"
-echo "  4. Train:  python 2_train.py --finetune-from PREV_VERSION"
+echo "  2. Ingest: python add_data.py"
+echo "  3. Train:  python 2_train.py --finetune-from PREV_VERSION"
