@@ -28,14 +28,19 @@ MISSION_ID="${1}"
 RPI_HOST="${2:-raspberrypi.local}"
 RPI_USER="${3:-fred}"
 
+# If no MISSION_ID given, auto-detect the latest mission on the RPi
 if [ -z "$MISSION_ID" ]; then
-    echo "Usage: $0 MISSION_ID [RPI_HOST] [RPI_USER]"
-    echo "  e.g. $0 0001"
-    echo ""
-    echo "Available missions on RPi:"
-    ssh "${RPI_USER:-fred}@${RPI_HOST:-raspberrypi.local}" \
-        "ls /home/${RPI_USER:-fred}/skydock2/missions/ 2>/dev/null" || true
-    exit 1
+    echo "No MISSION_ID given — detecting latest mission on ${RPI_USER}@${RPI_HOST} ..."
+    MISSION_ID=$(ssh "${RPI_USER}@${RPI_HOST}" \
+        "ls /home/${RPI_USER}/skydock2/missions/ 2>/dev/null | sort -V | tail -1" 2>/dev/null || true)
+    if [ -z "$MISSION_ID" ]; then
+        echo "ERROR: No missions found on RPi at /home/${RPI_USER}/skydock2/missions/"
+        echo "Available missions:"
+        ssh "${RPI_USER}@${RPI_HOST}" \
+            "ls /home/${RPI_USER}/skydock2/missions/ 2>/dev/null || echo '  (none)'"
+        exit 1
+    fi
+    echo "  Latest mission: ${MISSION_ID}"
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

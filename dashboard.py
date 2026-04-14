@@ -309,7 +309,7 @@ elif page == "Flight Browser":
         st.info("No flights yet. Run pull_flight.sh to pull from RPi.")
     else:
         flight_names = [d.name for d in flight_dirs]
-        sel_flight = st.selectbox("Flight", flight_names)
+        sel_flight = st.selectbox("Flight", flight_names, index=len(flight_names) - 1)
         flight_dir = FLIGHTS / sel_flight
 
         # Show flight metadata
@@ -532,7 +532,7 @@ elif page == "Actions":
         if FLIGHTS.exists() else []
     )
     if flight_dirs:
-        sel = st.selectbox("Flight", flight_dirs, key="deb_flight")
+        sel = st.selectbox("Flight", flight_dirs, index=len(flight_dirs) - 1, key="deb_flight")
         deb_host = st.text_input("deb.local host", value="deb.local")
         deb_user = st.text_input("deb.local user", value="fred")
         if st.button("Send + Label"):
