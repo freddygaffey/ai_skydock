@@ -31,28 +31,32 @@ RPI_USER="${3:-fred}"
 # If no MISSION_ID given, list missions from RPi and let user pick
 if [ -z "$MISSION_ID" ]; then
     echo "Fetching missions from ${RPI_USER}@${RPI_HOST} ..."
-    MISSIONS=$(ssh "${RPI_USER}@${RPI_HOST}" \
-        "ls /home/${RPI_USER}/skydock2/missions/ 2>/dev/null | sort -V" 2>/dev/null || true)
-    if [ -z "$MISSIONS" ]; then
+
+    # Single SSH call — get mission name + frame count for each in one shot
+    MISSION_INFO=$(ssh "${RPI_USER}@${RPI_HOST}" "
+        BASE=/home/${RPI_USER}/skydock2/missions
+        for d in \$(ls \$BASE 2>/dev/null | sort -V); do
+            n=\$(ls \$BASE/\$d/frames/ 2>/dev/null | wc -l)
+            echo \"\$d \$n\"
+        done
+    " 2>/dev/null || true)
+
+    if [ -z "$MISSION_INFO" ]; then
         echo "ERROR: No missions found on RPi at /home/${RPI_USER}/skydock2/missions/"
         exit 1
     fi
 
-    # Build numbered list
     echo ""
     i=1
-    while IFS= read -r m; do
-        # Show frame count alongside each mission
-        NFRAMES=$(ssh "${RPI_USER}@${RPI_HOST}" \
-            "ls /home/${RPI_USER}/skydock2/missions/${m}/frames/*.jpg 2>/dev/null | wc -l" 2>/dev/null || echo "?")
-        printf "  %2d)  %s  (%s frames)\n" "$i" "$m" "$NFRAMES"
+    while IFS=" " read -r m nframes; do
+        printf "  %2d)  %s  (%s frames)\n" "$i" "$m" "$nframes"
         i=$((i + 1))
-    done <<< "$MISSIONS"
+    done <<< "$MISSION_INFO"
     echo ""
 
     TOTAL=$((i - 1))
     printf "Select mission [1-%d] (default %d): " "$TOTAL" "$TOTAL"
-    read -r CHOICE
+    read -r CHOICE < /dev/tty
     CHOICE="${CHOICE:-$TOTAL}"   # default = latest
 
     if ! [[ "$CHOICE" =~ ^[0-9]+$ ]] || [ "$CHOICE" -lt 1 ] || [ "$CHOICE" -gt "$TOTAL" ]; then
@@ -60,7 +64,7 @@ if [ -z "$MISSION_ID" ]; then
         exit 1
     fi
 
-    MISSION_ID=$(sed -n "${CHOICE}p" <<< "$MISSIONS")
+    MISSION_ID=$(awk "NR==${CHOICE} {print \$1}" <<< "$MISSION_INFO")
     echo "  Selected: ${MISSION_ID}"
     echo ""
 fi
