@@ -301,8 +301,10 @@ elif page == "Flight Browser":
     st.header("Flight Browser")
 
     # List available flights
+    import re
     flight_dirs = sorted(
-        [d for d in FLIGHTS.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        [d for d in FLIGHTS.iterdir()
+         if d.is_dir() and re.match(r'^\d{4}-\d{2}-\d{2}_flight\d+$', d.name)]
     ) if FLIGHTS.exists() else []
 
     if not flight_dirs:
@@ -527,8 +529,10 @@ elif page == "Actions":
     st.caption(
         "Rsync raw_frames/ to deb.local, run ground model, rsync labels back."
     )
+    import re
     flight_dirs = (
-        sorted([d.name for d in FLIGHTS.iterdir() if d.is_dir()])
+        sorted([d.name for d in FLIGHTS.iterdir()
+                if d.is_dir() and re.match(r'^\d{4}-\d{2}-\d{2}_flight\d+$', d.name)])
         if FLIGHTS.exists() else []
     )
     if flight_dirs:
