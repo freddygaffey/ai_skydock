@@ -9,7 +9,7 @@
 #
 # Examples:
 #   ./5_deploy_to_rpi.sh v003
-#   ./5_deploy_to_rpi.sh v003 raspberrypi.local fred
+#   ./5_deploy_to_rpi.sh v003 rpi.local fred
 #
 # The version arg can be:
 #   - A version string like "v003"   → resolves to model_registry/v003/best.hef
@@ -19,7 +19,7 @@
 set -e
 
 VERSION_OR_PATH="${1}"
-RPI_HOST="${2:-raspberrypi.local}"
+RPI_HOST="${2:-rpi.local}"
 RPI_USER="${3:-fred}"
 
 if [ -z "$VERSION_OR_PATH" ]; then

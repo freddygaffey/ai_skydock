@@ -15,7 +15,7 @@
 #
 # Examples:
 #   ./pull_flight.sh 0001
-#   ./pull_flight.sh 0001 raspberrypi.local fred
+#   ./pull_flight.sh 0001 rpi.local fred
 #
 # After pulling, auto-label with:
 #   python labeling/auto_label.py --flight FLIGHT_ID --stage
@@ -25,7 +25,7 @@
 set -e
 
 MISSION_ID="${1}"
-RPI_HOST="${2:-raspberrypi.local}"
+RPI_HOST="${2:-rpi.local}"
 RPI_USER="${3:-fred}"
 
 # If no MISSION_ID given, auto-detect the latest mission on the RPi

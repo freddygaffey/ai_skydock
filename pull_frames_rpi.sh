@@ -11,13 +11,13 @@
 #
 # Examples:
 #   ./pull_frames_rpi.sh 0001
-#   ./pull_frames_rpi.sh 0042 raspberrypi.local fred
+#   ./pull_frames_rpi.sh 0042 rpi.local fred
 # ============================================================
 
 set -e
 
 MISSION_ID="${1}"
-RPI_HOST="${2:-raspberrypi.local}"
+RPI_HOST="${2:-rpi.local}"
 RPI_USER="${3:-fred}"
 
 if [ -z "$MISSION_ID" ]; then

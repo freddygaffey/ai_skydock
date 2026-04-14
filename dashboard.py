@@ -502,7 +502,7 @@ elif page == "Actions":
     versions = [m["version"] for m in models]
     if versions:
         deploy_v = st.selectbox("Version to deploy", versions)
-        rpi_host = st.text_input("RPi host", value="raspberrypi.local")
+        rpi_host = st.text_input("RPi host", value="rpi.local")
         if st.button("Deploy", type="primary"):
             hef = MODEL_REG / deploy_v / "best.hef"
             if not hef.exists():
