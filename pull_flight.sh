@@ -104,20 +104,21 @@ mkdir -p "${LOCAL_DIR}/meta"
 # ---- Pull frames (tar over SSH — one connection, no per-file overhead) ----
 echo "==> Pulling raw_frames/ ..."
 FRAME_COUNT_REMOTE=$(ssh "${RPI_USER}@${RPI_HOST}" \
-    "ls ${RPI_MISSION_DIR}/frames/*.jpg 2>/dev/null | wc -l" 2>/dev/null || echo 0)
+    "ls ${RPI_MISSION_DIR}/frames/ 2>/dev/null | wc -l" 2>/dev/null || echo 0)
 echo "    ${FRAME_COUNT_REMOTE} frames on RPi"
 
 # JPEGs are already compressed — skip -z to avoid wasting CPU with no size benefit.
 # Single tar stream over one SSH connection is faster than rsync's per-file overhead on WiFi.
-ssh "${RPI_USER}@${RPI_HOST}" \
-    "tar -C ${RPI_MISSION_DIR}/frames -cf - \$(ls *.jpg *.jpeg 2>/dev/null)" \
+ssh "${RPI_USER}@${RPI_HOST}" "tar -C ${RPI_MISSION_DIR}/frames -cf - ." \
     | tar -xf - -C "${LOCAL_DIR}/raw_frames/"
 echo "    OK"
 
-# ---- Pull mission log (text — compress this one) ----
-echo "==> Pulling mission.jsonl ..."
+# ---- Pull mission log (try both names) ----
+echo "==> Pulling mission log ..."
 rsync -az "${RPI_USER}@${RPI_HOST}:${RPI_MISSION_DIR}/mission.jsonl" \
-    "${LOCAL_DIR}/" 2>/dev/null && echo "    OK" || echo "    (not found)"
+    "${LOCAL_DIR}/" 2>/dev/null && echo "    mission.jsonl OK" || true
+rsync -az "${RPI_USER}@${RPI_HOST}:${RPI_MISSION_DIR}/database_snapshot.json" \
+    "${LOCAL_DIR}/" 2>/dev/null && echo "    database_snapshot.json OK" || true
 
 # ---- Pull drone DB ----
 echo "==> Pulling droneDB.db ..."
@@ -125,7 +126,7 @@ rsync -a "${RPI_USER}@${RPI_HOST}:${RPI_MISSION_DIR}/droneDB.db" \
     "${LOCAL_DIR}/" 2>/dev/null && echo "    OK" || echo "    (not found)"
 
 # ---- flight_meta.json ----
-FRAME_COUNT=$(ls "${LOCAL_DIR}/raw_frames/"*.jpg 2>/dev/null | wc -l)
+FRAME_COUNT=$(ls "${LOCAL_DIR}/raw_frames/" 2>/dev/null | wc -l)
 cat > "${LOCAL_DIR}/flight_meta.json" <<JSON
 {
   "flight_id": "${FLIGHT_ID}",
