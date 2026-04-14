@@ -69,11 +69,12 @@ missions/
       1775974450370064503.jpg
       ...
     droneDB.db
-    database_snapshot.json      ← mission log (NOT mission.jsonl — that name is not used)
+    database_snapshot.json
+    mission.jsonl               ← both files are present
 ```
 
-`pull_flight.sh` handles this: tars `frames/` over SSH in one connection, pulls both
-`database_snapshot.json` and `droneDB.db`. Frame filenames are nanosecond Unix timestamps.
+`pull_flight.sh` handles this: tars `frames/` over SSH in one connection, pulls
+`mission.jsonl`, `database_snapshot.json`, and `droneDB.db`. Frame filenames are nanosecond Unix timestamps.
 
 ## Key constraints
 
