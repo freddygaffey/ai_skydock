@@ -28,19 +28,41 @@ MISSION_ID="${1}"
 RPI_HOST="${2:-rpi.local}"
 RPI_USER="${3:-fred}"
 
-# If no MISSION_ID given, auto-detect the latest mission on the RPi
+# If no MISSION_ID given, list missions from RPi and let user pick
 if [ -z "$MISSION_ID" ]; then
-    echo "No MISSION_ID given — detecting latest mission on ${RPI_USER}@${RPI_HOST} ..."
-    MISSION_ID=$(ssh "${RPI_USER}@${RPI_HOST}" \
-        "ls /home/${RPI_USER}/skydock2/missions/ 2>/dev/null | sort -V | tail -1" 2>/dev/null || true)
-    if [ -z "$MISSION_ID" ]; then
+    echo "Fetching missions from ${RPI_USER}@${RPI_HOST} ..."
+    MISSIONS=$(ssh "${RPI_USER}@${RPI_HOST}" \
+        "ls /home/${RPI_USER}/skydock2/missions/ 2>/dev/null | sort -V" 2>/dev/null || true)
+    if [ -z "$MISSIONS" ]; then
         echo "ERROR: No missions found on RPi at /home/${RPI_USER}/skydock2/missions/"
-        echo "Available missions:"
-        ssh "${RPI_USER}@${RPI_HOST}" \
-            "ls /home/${RPI_USER}/skydock2/missions/ 2>/dev/null || echo '  (none)'"
         exit 1
     fi
-    echo "  Latest mission: ${MISSION_ID}"
+
+    # Build numbered list
+    echo ""
+    i=1
+    while IFS= read -r m; do
+        # Show frame count alongside each mission
+        NFRAMES=$(ssh "${RPI_USER}@${RPI_HOST}" \
+            "ls /home/${RPI_USER}/skydock2/missions/${m}/frames/*.jpg 2>/dev/null | wc -l" 2>/dev/null || echo "?")
+        printf "  %2d)  %s  (%s frames)\n" "$i" "$m" "$NFRAMES"
+        i=$((i + 1))
+    done <<< "$MISSIONS"
+    echo ""
+
+    TOTAL=$((i - 1))
+    printf "Select mission [1-%d] (default %d): " "$TOTAL" "$TOTAL"
+    read -r CHOICE
+    CHOICE="${CHOICE:-$TOTAL}"   # default = latest
+
+    if ! [[ "$CHOICE" =~ ^[0-9]+$ ]] || [ "$CHOICE" -lt 1 ] || [ "$CHOICE" -gt "$TOTAL" ]; then
+        echo "ERROR: Invalid selection."
+        exit 1
+    fi
+
+    MISSION_ID=$(sed -n "${CHOICE}p" <<< "$MISSIONS")
+    echo "  Selected: ${MISSION_ID}"
+    echo ""
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
