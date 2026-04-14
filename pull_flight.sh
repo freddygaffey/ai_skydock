@@ -5,13 +5,12 @@
 # Pulls:   raw_frames/, mission.jsonl, database_snapshot.json, droneDB.db
 #
 # Usage:
-#   ./pull_flight.sh                          # interactive mission picker
-#   ./pull_flight.sh 0240                     # specific mission
-#   ./pull_flight.sh 0240 rpi.local fred      # explicit host/user
-#   ./pull_flight.sh 0240 rpi.local fred 5    # pull every 5th frame
+#   ./pull_flight.sh                          # interactive: picks mission + asks stride
+#   ./pull_flight.sh 0240 rpi.local fred 5    # non-interactive: mission + stride required
 #
-# --stride N (4th arg): pull every Nth frame. Default 1 (all frames).
+# Stride N: pull every Nth frame locally. RPi always keeps all frames.
 #   Stride 5 on a 16k-frame flight = ~3k frames, ~5x faster over WiFi.
+#   Consecutive frames at 30fps are near-identical — stride 5 loses nothing useful.
 #
 # After pulling, auto-label with:
 #   python labeling/auto_label.py --flight FLIGHT_ID --stage
@@ -64,14 +63,19 @@ if [ -z "$MISSION_ID" ]; then
     MISSION_ID=$(awk "NR==${CHOICE} {print \$1}" <<< "$MISSION_INFO")
     echo "  Selected: ${MISSION_ID}"
 
-    # Ask for stride
+    # Ask for stride — mandatory, no default
     echo ""
-    printf "Pull every Nth frame? [default 1 = all, suggest 5 for WiFi]: "
-    read -r STRIDE_INPUT < /dev/tty
-    STRIDE="${STRIDE_INPUT:-1}"
-    if ! [[ "$STRIDE" =~ ^[0-9]+$ ]] || [ "$STRIDE" -lt 1 ]; then
-        STRIDE=1
-    fi
+    echo "  RPi keeps all frames. Stride = how many to skip locally."
+    echo "  Recommended: 5 (WiFi) or 3 (ethernet). 1 = pull everything."
+    while true; do
+        printf "Pull every Nth frame (stride): "
+        read -r STRIDE_INPUT < /dev/tty
+        if [[ "$STRIDE_INPUT" =~ ^[0-9]+$ ]] && [ "$STRIDE_INPUT" -ge 1 ]; then
+            STRIDE="$STRIDE_INPUT"
+            break
+        fi
+        echo "  Enter a number >= 1."
+    done
     echo ""
 fi
 
